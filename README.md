@@ -1,27 +1,44 @@
 # RAG (Retrieval-Augmented Generation) System
 
-A Python-based RAG pipeline for question-answering over text documents using embeddings and local LLM generation.
+A Python-based RAG pipeline for question-answering over multiple data sources using embeddings and local LLM generation.
 
 ## Overview
 
 This project implements a complete RAG system that:
-1. Ingests text data
-2. Chunks text using sliding window approach
-3. Creates vector embeddings using Sentence Transformers
-4. Retrieves relevant context based on queries
-5. Generates answers using Ollama LLM
+1. **Ingests data from multiple sources** (text files, PDFs, YouTube videos)
+2. **Chunks text** using sliding window approach
+3. **Creates vector embeddings** using Sentence Transformers
+4. **Retrieves relevant context** based on semantic similarity
+5. **Generates answers** using Ollama LLM
 
 ## Project Structure
 
 ```
 RAG/
-├── data_ingestion.py   # Read and load text data
-├── chunking.py         # Split text into overlapping chunks
-├── embedding.py        # Create vector embeddings
-├── generation.py       # Generate answers using Ollama
-├── data.txt           # Source text (badminton information)
-├── .gitignore         # Git ignore rules
-└── README.md          # This file
+├── Core Modules
+│   ├── main.py                 # Main application with multi-source support
+│   ├── data_ingestion.py       # Text file ingestion
+│   ├── youtube_ingestion.py    # YouTube transcript extraction
+│   ├── pdf_ingestion.py        # PDF document processing
+│   ├── chunking.py             # Text splitting with overlap
+│   ├── embedding.py            # Vector embeddings creation
+│   ├── retrieval.py            # Semantic search
+│   └── generation.py           # LLM answer generation
+│
+├── Data
+│   └── data.txt                # Sample text data (badminton info)
+│
+├── Documentation
+│   ├── docs/                   # Detailed documentation
+│   │   ├── RAG_SYSTEM_DOCUMENTATION.md
+│   │   ├── COMPLETE_INGESTION_GUIDE.md
+│   │   ├── YOUTUBE_INGESTION_DOCS.md
+│   │   └── PDF_INGESTION_DOCS.md
+│   └── README.md               # This file
+│
+└── Tests
+    └── tests/                  # Test scripts
+        └── test_real_rag.py
 ```
 
 ## Setup
@@ -33,10 +50,10 @@ RAG/
 
 ### Installation
 
-1. **Create and activate conda environment:**
+1. **Create and activate virtual environment:**
 ```bash
-conda create -n d2l python=3.10
-conda activate rag_env
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 2. **Install dependencies:**
@@ -44,71 +61,128 @@ conda activate rag_env
 pip install sentence-transformers
 pip install scikit-learn
 pip install requests
+pip install youtube-transcript-api
+pip install pypdf
 ```
 
-3. **Install Ollama:**
+3. **Install Ollama (optional for generation):**
 - Download from [ollama.ai](https://ollama.ai)
 - Pull a model:
 ```bash
 ollama pull llama3.2
 ```
 
-### Fix PyTorch/OpenMP Issues
+## Quick Start
 
-If you encounter OpenMP errors, set the environment variable:
+Run the interactive RAG system:
 
-**Windows (cmd):**
-```cmd
-set KMP_DUPLICATE_LIB_OK=TRUE
-```
-
-**Windows (PowerShell):**
-```powershell
-$env:KMP_DUPLICATE_LIB_OK="TRUE"
-```
-
-**Permanent fix (conda):**
 ```bash
-conda env config vars set KMP_DUPLICATE_LIB_OK=TRUE -n d2l
-conda activate d2l
+python main.py
 ```
 
-## Usage
+You'll be prompted to select a data source:
+1. **Text File** - Load from .txt files
+2. **PDF Document** - Extract text from PDFs
+3. **YouTube Video** - Get transcripts from videos
 
-### 1. Data Ingestion
+Then ask questions about your data!
+
+## Usage Examples
+
+### Option 1: Interactive Mode (Recommended)
+
+```bash
+python main.py
+```
+
+Example session:
+```
+📚 SELECT DATA SOURCE:
+   1. Text File (.txt)
+   2. PDF Document (.pdf)
+   3. YouTube Video (URL)
+
+Enter your choice (1-3): 2
+Enter PDF file path: ../my_document.pdf
+
+✅ Successfully loaded 61,447 characters
+✅ Created 410 chunks
+✅ Generated 410 vectors
+
+❓ Your question: What is RAG?
+🔍 Searching knowledge base...
+💬 Answer: RAG (Retrieval-Augmented Generation) is...
+```
+
+### Option 2: Programmatic Usage
+
+#### Text File Ingestion
 ```python
 from data_ingestion import reading_data
-
 text = reading_data("data.txt")
 ```
 
-### 2. Chunking
+#### PDF Document Ingestion
+```python
+from pdf_ingestion import get_pdf_text
+text = get_pdf_text("document.pdf")
+```
+
+#### YouTube Transcript Ingestion
+```python
+from youtube_ingestion import get_youtube_transcript
+text = get_youtube_transcript("https://www.youtube.com/watch?v=...")
+```
+
+#### Complete RAG Pipeline
 ```python
 from chunking import get_chunks
-
-chunks = get_chunks(text, chunk_size=200, overlap=50)
-print(f"Created {len(chunks)} chunks")
-```
-
-### 3. Create Embeddings
-```python
 from embedding import vector_embedding
-
-vectors, model = vector_embedding(chunks)
-print(f"Shape: {vectors[0].shape}")
-```
-
-### 4. Generate Answers
-```python
+from retrieval import search_best_chunks
 from generation import generate_answer
 
-query = "When did badminton join the Olympics?"
-context = "Badminton debuted in the Olympics in 1992."
-answer = generate_answer(query, context)
+# Chunk the text
+chunks = get_chunks(text, chunk_size=200, overlap=50)
+# Chunk the text
+chunks = get_chunks(text, chunk_size=200, overlap=50)
+
+# Create embeddings
+vectors, model = vector_embedding(chunks)
+
+# Query the system
+query = "What is RAG?"
+results = search_best_chunks(query, model, vectors, chunks, k=3)
+
+# Generate answer (requires Ollama)
+answer = generate_answer(query, results[0]['text'])
 print(answer)
 ```
 
+## Features
+
+- ✅ **Multi-source ingestion**: Text files, PDFs, YouTube videos
+- ✅ **Sliding window chunking** with overlap
+- ✅ **Vector embeddings** using Sentence Transformers (384-dim)
+- ✅ **Semantic search** with cosine similarity
+- ✅ **Local LLM generation** with Ollama
+- ✅ **Interactive Q&A** interface
+- ✅ **No API costs** - runs entirely offline
+
+## Documentation
+
+Comprehensive documentation is available in the [docs/](docs/) directory:
+
+- **[RAG System Documentation](docs/RAG_SYSTEM_DOCUMENTATION.md)** - Complete system overview
+- **[Ingestion Guide](docs/COMPLETE_INGESTION_GUIDE.md)** - Multi-source data ingestion
+- **[YouTube Module](docs/YOUTUBE_INGESTION_DOCS.md)** - YouTube transcript extraction
+- **[PDF Module](docs/PDF_INGESTION_DOCS.md)** - PDF processing details
+
 ## Configuration
+
+### Data Source Options
+1. **Text Files**: Any .txt file
+2. **PDF Documents**: Multi-page PDF extraction
+3. **YouTube Videos**: Automatic transcript fetching
 
 ### Chunking Parameters
 - `chunk_size`: Characters per chunk (default: 200)
