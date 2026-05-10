@@ -4,7 +4,9 @@ numpy
 pandas
 scikit-learn
 PyPDF2
-google-generativeai
+google-genai
+openai
+python-dotenv
 youtube-transcript-api
 langchain
 torch
