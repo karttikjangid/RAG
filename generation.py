@@ -1,13 +1,13 @@
 import os
-import requests
+from openai import OpenAI
+from google import genai
 
 NO_ANSWER_RESPONSE = (
     "The uploaded document does not contain enough information to answer this question."
 )
 
 GEMINI_MODEL = "gemini-3-flash-preview"
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
+NVIDIA_MODEL = "deepseek-ai/deepseek-v4-flash"
 
 def _build_prompt(query, context):
     return (
@@ -17,55 +17,43 @@ def _build_prompt(query, context):
         f"Context:\n{context}\n\nQuestion:\n{query}\n"
     )
 
-
-def _get_api_key():
-    if not GEMINI_API_KEY:
-        raise ValueError(
-            'GEMINI_API_KEY environment variable is not set. '
-            'Please set it using: export GEMINI_API_KEY="your_api_key"'
-        )
-    return GEMINI_API_KEY
-
-
 def generate_answer(query, context):
-    api_key = _get_api_key()
-
     prompt = _build_prompt(query, context)
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent"
-    )
-
-    payload = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.2,
-            "maxOutputTokens": 512,
-            "topP": 0.9,
-        },
-    }
-
-    try:
-        response = requests.post(
-            url,
-            params={"key": api_key},
-            json=payload,
-            timeout=30,
+    
+    nvidia_api_key = os.getenv("NVIDIA_API_KEY")
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+    
+    if nvidia_api_key:
+        client = OpenAI(
+            base_url="https://integrate.api.nvidia.com/v1",
+            api_key=nvidia_api_key
         )
-        response.raise_for_status()
-        data = response.json()
-    except requests.exceptions.RequestException as exc:
-        raise RuntimeError("Failed to connect to Gemini API.") from exc
-    except ValueError as exc:
-        raise RuntimeError(f"Invalid response from Gemini API: {exc}") from exc
-
-    candidates = data.get("candidates", [])
-    if not candidates:
-        return NO_ANSWER_RESPONSE
-
-    parts = candidates[0].get("content", {}).get("parts", [])
-    if not parts:
-        return NO_ANSWER_RESPONSE
-
-    text = parts[0].get("text", "").strip()
-    return text or NO_ANSWER_RESPONSE
+        try:
+            response = client.chat.completions.create(
+                model=NVIDIA_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=512,
+                top_p=0.9,
+            )
+            content = response.choices[0].message.content
+            return content.strip() if content else NO_ANSWER_RESPONSE
+        except Exception as e:
+            raise RuntimeError(f"Failed to connect to NVIDIA API: {e}")
+            
+    elif gemini_api_key:
+        try:
+            client = genai.Client(api_key=gemini_api_key)
+            response = client.models.generate_content(
+                model=GEMINI_MODEL, 
+                contents=prompt
+            )
+            return response.text.strip() if response.text else NO_ANSWER_RESPONSE
+        except Exception as e:
+            raise RuntimeError(f"Failed to connect to Gemini API: {e}")
+            
+    else:
+        raise ValueError(
+            'Neither NVIDIA_API_KEY nor GEMINI_API_KEY environment variables are set. '
+            'Please set at least one to use the generation feature.'
+        )

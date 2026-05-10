@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
+
 import tempfile
 from pathlib import Path
 from typing import Union
@@ -76,7 +79,7 @@ def _write_temp_file(file_bytes, suffix):
 
 DEFAULT_CHUNK_SIZE = 600
 DEFAULT_CHUNK_OVERLAP = 120
-MIN_SIMILARITY = 0.2
+MIN_SIMILARITY = 0.0
 
 # Page Configuration
 st.set_page_config(
@@ -260,7 +263,6 @@ st.markdown("""
         background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(232, 245, 233, 0.5) 100%) !important;
         border: 2px dashed #81c784;
         border-radius: 0.75rem;
-        padding: 2rem 1.5rem;
     }
     
     [data-testid="stFileUploader"]:hover {
