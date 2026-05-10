@@ -6,6 +6,7 @@ NO_ANSWER_RESPONSE = (
 )
 
 GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 def _build_prompt(query, context):
@@ -17,13 +18,17 @@ def _build_prompt(query, context):
     )
 
 
-def generate_answer(query, context):
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
+def _get_api_key():
+    if not GEMINI_API_KEY:
         raise ValueError(
             'GEMINI_API_KEY environment variable is not set. '
             'Please set it using: export GEMINI_API_KEY="your_api_key"'
         )
+    return GEMINI_API_KEY
+
+
+def generate_answer(query, context):
+    api_key = _get_api_key()
 
     prompt = _build_prompt(query, context)
     url = (
@@ -43,8 +48,8 @@ def generate_answer(query, context):
     try:
         response = requests.post(
             url,
+            params={"key": api_key},
             json=payload,
-            headers={"x-goog-api-key": api_key},
             timeout=30,
         )
         response.raise_for_status()

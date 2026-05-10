@@ -68,6 +68,7 @@ def cached_embedding(_model, chunks):
 
 
 def _write_temp_file(file_bytes, suffix):
+    """Write bytes to a temp file and return the path for downstream processing."""
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
         temp_file.write(file_bytes)
         return temp_file.name
@@ -465,12 +466,17 @@ def rebuild_embeddings():
     st.session_state.model = model
 
 
-def format_file_size(size: Union[int, str]) -> str:
-    if isinstance(size, int):
-        size_mb = size / (1024 * 1024)
-        return f"{size_mb:.2f} MB" if size_mb >= 1 else f"{size / 1024:.1f} KB"
-    if isinstance(size, str):
-        return size
+def format_file_size(size_bytes_or_label: Union[int, str]) -> str:
+    """Format byte counts or display-ready labels for the source list."""
+    if isinstance(size_bytes_or_label, int):
+        size_mb = size_bytes_or_label / (1024 * 1024)
+        return (
+            f"{size_mb:.2f} MB"
+            if size_mb >= 1
+            else f"{size_bytes_or_label / 1024:.1f} KB"
+        )
+    if isinstance(size_bytes_or_label, str):
+        return size_bytes_or_label
     return "Unknown"
 
 # Sidebar

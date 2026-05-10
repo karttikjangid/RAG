@@ -22,19 +22,11 @@
 - 🔒 **Grounded RAG**: Answers are restricted to retrieved context with explicit no-hallucination fallback
 
 
-## 📸 Screenshots
+## 📸 Screenshots (Placeholders)
 
-### Web Interface (app.py)
-- Modern chat interface with message history
-- Tabbed sidebar for PDF and YouTube uploads
-- Real-time source management with delete functionality
-- Auto-processing on source addition
-- Calm light green aesthetic with perfect readability
-
-### CLI Interface (main.py)
-- Interactive terminal-based question answering
-- Multi-source selection and processing
-- Useful for server environments or scripting
+- Web interface overview *(add screenshot here)*
+- Chat interface with grounded answer *(add screenshot here)*
+- Mobile responsive layout *(add screenshot here)*
 
 ---
 
@@ -236,14 +228,6 @@ LecturMate is deployable on Render or Railway:
 - "Summarize the key findings from the uploaded PDF."
 - "What are the main columns and trends in the CSV data?"
 - "List the key definitions mentioned in the TXT notes."
-
----
-
-## 📸 Screenshots (Placeholders)
-
-- Upload + source library view *(add screenshot here)*
-- Chat interface with grounded answer *(add screenshot here)*
-- Mobile responsive layout *(add screenshot here)*
 
 ---
 
