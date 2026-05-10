@@ -1,6 +1,7 @@
 import os
 import tempfile
 from pathlib import Path
+from typing import Union
 
 import streamlit as st
 from sentence_transformers import SentenceTransformer
@@ -464,7 +465,7 @@ def rebuild_embeddings():
     st.session_state.model = model
 
 
-def format_file_size(size: object) -> str:
+def format_file_size(size: Union[int, str]) -> str:
     if isinstance(size, int):
         size_mb = size / (1024 * 1024)
         return f"{size_mb:.2f} MB" if size_mb >= 1 else f"{size / 1024:.1f} KB"
