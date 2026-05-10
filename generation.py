@@ -28,7 +28,7 @@ def generate_answer(query, context):
     prompt = _build_prompt(query, context)
     url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{GEMINI_MODEL}:generateContent?key={api_key}"
+        f"{GEMINI_MODEL}:generateContent"
     )
 
     payload = {
@@ -41,7 +41,12 @@ def generate_answer(query, context):
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=30)
+        response = requests.post(
+            url,
+            json=payload,
+            headers={"x-goog-api-key": api_key},
+            timeout=30,
+        )
         response.raise_for_status()
         data = response.json()
     except requests.exceptions.RequestException as exc:

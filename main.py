@@ -12,7 +12,7 @@ from generation import NO_ANSWER_RESPONSE, generate_answer
 
 DEFAULT_CHUNK_SIZE = 600
 DEFAULT_CHUNK_OVERLAP = 120
-MIN_SIMILARITY = 0.2
+MIN_SIMILARITY = 0.2  # Minimum cosine similarity (0.0-1.0) to trust retrieved context
 
 def start_app():
     print("\n" + "=" * 70)

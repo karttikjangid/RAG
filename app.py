@@ -1,4 +1,5 @@
 import os
+import tempfile
 from pathlib import Path
 
 import streamlit as st
@@ -21,12 +22,11 @@ def load_embedding_model():
 @st.cache_data(show_spinner="Extracting PDF text...")
 def cached_pdf_extraction(file_name, file_bytes):
     """Cache PDF text extraction by file content hash"""
-    temp_path = f"/tmp/{file_name}"
-    with open(temp_path, "wb") as f:
-        f.write(file_bytes)
-    text = get_pdf_text(temp_path)
-    os.remove(temp_path)
-    return text
+    temp_path = _write_temp_file(file_bytes, suffix=Path(file_name).suffix)
+    try:
+        return get_pdf_text(temp_path)
+    finally:
+        os.remove(temp_path)
 
 
 @st.cache_data(show_spinner="Reading text file...")
@@ -41,12 +41,11 @@ def cached_text_extraction(file_name, file_bytes):
 @st.cache_data(show_spinner="Extracting CSV text...")
 def cached_csv_extraction(file_name, file_bytes):
     """Cache CSV text extraction"""
-    temp_path = f"/tmp/{file_name}"
-    with open(temp_path, "wb") as f:
-        f.write(file_bytes)
-    text = get_csv_text(temp_path)
-    os.remove(temp_path)
-    return text
+    temp_path = _write_temp_file(file_bytes, suffix=Path(file_name).suffix)
+    try:
+        return get_csv_text(temp_path)
+    finally:
+        os.remove(temp_path)
 
 # Cache YouTube transcript fetching
 @st.cache_data(show_spinner="Fetching YouTube transcript...", ttl=3600)
@@ -65,6 +64,12 @@ def cached_chunking(text, chunk_size=500, overlap=100):
 def cached_embedding(_model, chunks):
     """Cache vector embeddings creation"""
     return _model.encode(chunks)
+
+
+def _write_temp_file(file_bytes, suffix):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temp_file:
+        temp_file.write(file_bytes)
+        return temp_file.name
 
 
 DEFAULT_CHUNK_SIZE = 600
