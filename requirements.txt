@@ -9,3 +9,4 @@ youtube-transcript-api
 langchain
 torch
 transformers
+pypdf
