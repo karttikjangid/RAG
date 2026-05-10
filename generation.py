@@ -5,7 +5,7 @@ NO_ANSWER_RESPONSE = (
     "The uploaded document does not contain enough information to answer this question."
 )
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-3-flash-preview"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
