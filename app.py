@@ -464,11 +464,13 @@ def rebuild_embeddings():
     st.session_state.model = model
 
 
-def format_file_size(size):
-    if not isinstance(size, int):
-        return str(size)
-    size_mb = size / (1024 * 1024)
-    return f"{size_mb:.2f} MB" if size_mb >= 1 else f"{size / 1024:.1f} KB"
+def format_file_size(size: object) -> str:
+    if isinstance(size, int):
+        size_mb = size / (1024 * 1024)
+        return f"{size_mb:.2f} MB" if size_mb >= 1 else f"{size / 1024:.1f} KB"
+    if isinstance(size, str):
+        return size
+    return "Unknown"
 
 # Sidebar
 with st.sidebar:
@@ -529,7 +531,10 @@ with st.sidebar:
                         extracted_text = cached_csv_extraction(uploaded_file.name, file_bytes)
                         source_type = "csv"
                     else:
-                        st.warning("Unsupported file type.")
+                        st.warning(
+                            f"Unsupported file type for {uploaded_file.name}. "
+                            "Supported types: PDF, TXT, CSV."
+                        )
                         continue
 
                     if not extracted_text or extracted_text.startswith("❌"):

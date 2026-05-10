@@ -52,7 +52,7 @@ def generate_answer(query, context):
     except requests.exceptions.RequestException as exc:
         raise RuntimeError("Failed to connect to Gemini API.") from exc
     except ValueError as exc:
-        raise RuntimeError("Invalid response from Gemini API.") from exc
+        raise RuntimeError(f"Invalid response from Gemini API: {exc}") from exc
 
     candidates = data.get("candidates", [])
     if not candidates:
