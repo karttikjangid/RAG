@@ -20,7 +20,10 @@ def _build_prompt(query, context):
 def generate_answer(query, context):
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise ValueError("GEMINI_API_KEY is not set.")
+        raise ValueError(
+            'GEMINI_API_KEY environment variable is not set. '
+            'Please set it using: export GEMINI_API_KEY="your_api_key"'
+        )
 
     prompt = _build_prompt(query, context)
     url = (
@@ -51,12 +54,3 @@ def generate_answer(query, context):
 
     text = parts[0].get("text", "").strip()
     return text or NO_ANSWER_RESPONSE
-
-
-if __name__ == "__main__":
-    test_context = "Badminton debuted in the Olympics in 1992. It is played with a shuttlecock."
-    test_query = "When did badminton join the Olympics?"
-
-    print("Asking Gemini...")
-    answer = generate_answer(test_query, test_context)
-    print("\nAnswer:", answer)

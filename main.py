@@ -89,8 +89,8 @@ def start_app():
             source_name = f"CSV: {csv_path}"
             
         else:
-        print("❌ Invalid choice! Please select 1-5.")
-        continue
+            print("❌ Invalid choice! Please select 1-5.")
+            continue
         
         # Safety Check: Validate loaded data
         if not raw_text or raw_text.startswith("❌"):

@@ -458,6 +458,13 @@ def rebuild_embeddings():
     st.session_state.vector_db = vectors
     st.session_state.model = model
 
+
+def format_file_size(size):
+    if not isinstance(size, int):
+        return size
+    size_mb = size / (1024 * 1024)
+    return f"{size_mb:.2f} MB" if size_mb >= 1 else f"{size / 1024:.1f} KB"
+
 # Sidebar
 with st.sidebar:
     # App Header
@@ -606,11 +613,7 @@ with st.sidebar:
 
         for idx, source in enumerate(st.session_state.source_details):
             icon = icon_map.get(source["type"], "📄")
-            if isinstance(source["size"], int):
-                size_mb = source["size"] / (1024 * 1024)
-                size_text = f"{size_mb:.2f} MB" if size_mb >= 1 else f"{source['size'] / 1024:.1f} KB"
-            else:
-                size_text = source["size"]
+            size_text = format_file_size(source["size"])
 
             col1, col2 = st.columns([5, 1])
             with col1:
