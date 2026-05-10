@@ -60,7 +60,7 @@ Created `youtube_rag_example.py` demonstrating full integration:
 2. **Chunk** the text (100 chars, 20 overlap)
 3. **Embed** chunks into vectors (384-dim)
 4. **Query** with semantic search
-5. **Generate** answer using LLM (if Ollama running)
+5. **Generate** answer using Gemini (with retrieved context)
 
 **Test Query**: "What do elephants have?"
 **Retrieved Context**: "...these guys is that they ha..."

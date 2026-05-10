@@ -1,43 +1,62 @@
+import os
 import requests
-import json
+
+NO_ANSWER_RESPONSE = (
+    "The uploaded document does not contain enough information to answer this question."
+)
+
+GEMINI_MODEL = "gemini-1.5-flash"
+
+
+def _build_prompt(query, context):
+    return (
+        "You are a grounded assistant for a RAG system. "
+        "Use ONLY the provided context to answer. "
+        f'If the answer is not present, respond with exactly: "{NO_ANSWER_RESPONSE}".\n\n'
+        f"Context:\n{context}\n\nQuestion:\n{query}\n"
+    )
+
 
 def generate_answer(query, context):
-    # 1. The Prompt Engineering (Crucial Step)
-    # We explicitly tell the AI to ONLY use the context provided.
-    prompt = f"""
-    You are a helpful assistant. Answer the question based ONLY on the provided context. 
-    If the answer is not in the context, say "I don't know."
-    
-    Context: {context}
-    
-    Question: {query}
-    """
-    
-    # 2. Connect to Ollama
-    # Ollama runs on port 11434 by default
-    url = "http://localhost:11434/api/generate"
-    
-    payload = {
-        "model": "llama3.2", # OR "mistral" - whatever you pulled in terminal
-        "prompt": prompt,
-        "stream": False 
-    }
-    
-    try:
-        response = requests.post(url, json=payload)
-        response.raise_for_status() # Check for HTTP errors
-        
-        # 3. Parse the result
-        return response.json()['response']
-        
-    except requests.exceptions.RequestException as e:
-        return f"Error connecting to Ollama: {e}"
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("GEMINI_API_KEY is not set.")
 
-# Test it independently first!
+    prompt = _build_prompt(query, context)
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_MODEL}:generateContent?key={api_key}"
+    )
+
+    payload = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 512,
+            "topP": 0.9,
+        },
+    }
+
+    response = requests.post(url, json=payload, timeout=30)
+    response.raise_for_status()
+    data = response.json()
+
+    candidates = data.get("candidates", [])
+    if not candidates:
+        return NO_ANSWER_RESPONSE
+
+    parts = candidates[0].get("content", {}).get("parts", [])
+    if not parts:
+        return NO_ANSWER_RESPONSE
+
+    text = parts[0].get("text", "").strip()
+    return text or NO_ANSWER_RESPONSE
+
+
 if __name__ == "__main__":
     test_context = "Badminton debuted in the Olympics in 1992. It is played with a shuttlecock."
     test_query = "When did badminton join the Olympics?"
-    
-    print("Asking Ollama...")
+
+    print("Asking Gemini...")
     answer = generate_answer(test_query, test_context)
     print("\nAnswer:", answer)

@@ -14,7 +14,7 @@
 
 ## 🎯 System Overview
 
-This is a **Retrieval-Augmented Generation (RAG)** system built in Python that enables intelligent question-answering over text documents. The system combines **semantic search** using vector embeddings with **local LLM generation** to provide accurate, context-aware answers.
+This is a **Retrieval-Augmented Generation (RAG)** system built in Python that enables intelligent question-answering over documents. The system combines **semantic search** using vector embeddings with **Gemini-powered generation** to provide accurate, context-aware answers.
 
 ### What is RAG?
 RAG is a technique that enhances Large Language Model (LLM) responses by:
@@ -23,8 +23,8 @@ RAG is a technique that enhances Large Language Model (LLM) responses by:
 3. **Generating** an answer based on the retrieved information
 
 ### Key Features
-- ✅ **Local-first**: Runs entirely on your machine using Ollama
-- ✅ **No API costs**: No external API dependencies
+- ✅ **Gemini integration**: Uses `gemini-1.5-flash` via API
+- ✅ **Grounded answers**: Enforced no-hallucination fallback
 - ✅ **Modular design**: Each component is independent and testable
 - ✅ **Efficient chunking**: Sliding window approach with overlap for better context
 - ✅ **Fast retrieval**: Uses cosine similarity on vector embeddings
@@ -40,7 +40,7 @@ RAG is a technique that enhances Large Language Model (LLM) responses by:
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  1. DATA INGESTION                                           │
-│     └─> Read text file                                      │
+│     └─> Read PDF / TXT / CSV / YouTube                      │
 │                                                              │
 │  2. CHUNKING                                                 │
 │     └─> Split into overlapping segments                     │
@@ -52,7 +52,7 @@ RAG is a technique that enhances Large Language Model (LLM) responses by:
 │     └─> Find most similar chunk via cosine similarity       │
 │                                                              │
 │  5. GENERATION                                               │
-│     └─> LLM generates answer from retrieved context         │
+│     └─> Gemini generates answer from retrieved context      │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -81,7 +81,17 @@ def reading_data(file_path):
 
 ---
 
-### 2. **chunking.py** - Text Chunking Module
+### 2. **csv_ingestion.py** - CSV Ingestion Module
+**Purpose**: Convert structured CSV rows into searchable text
+
+**Highlights**:
+- Preserves column names as labels
+- Converts each row into a single line of text
+- Enables natural-language queries over tabular data
+
+---
+
+### 3. **chunking.py** - Text Chunking Module
 **Purpose**: Split large text into smaller, overlapping chunks
 
 **Code Analysis**:
@@ -101,8 +111,8 @@ def get_chunks(text, chunk_size, overlap):
 **How it Works**:
 - **Sliding Window Algorithm**: Moves through text with controlled overlap
 - **Parameters**:
-  - `chunk_size`: Number of characters per chunk (default: 150-200)
-  - `overlap`: Number of overlapping characters between chunks (default: 50)
+  - `chunk_size`: Number of characters per chunk (default: ~600, recommended 500–1000)
+  - `overlap`: Number of overlapping characters between chunks (default: ~120, recommended 100–200)
   
 **Why Overlap?**
 - Prevents important information from being split awkwardly
@@ -117,7 +127,7 @@ def get_chunks(text, chunk_size, overlap):
 
 ---
 
-### 3. **embedding.py** - Vector Embedding Module
+### 4. **embedding.py** - Vector Embedding Module
 **Purpose**: Convert text chunks into numerical vector representations
 
 **Code Analysis**:
@@ -150,7 +160,7 @@ def vector_embedding(chunked):
 
 ---
 
-### 4. **retrieval.py** - Smart Retrieval Module
+### 5. **retrieval.py** - Smart Retrieval Module
 **Purpose**: Find the most relevant text chunk for a given query
 
 **Code Analysis**:
@@ -158,18 +168,21 @@ def vector_embedding(chunked):
 from sentence_transformers import util
 import torch
 
-def search_best_chunk(query, model, db_vectors, chunks):
+def search_best_chunks(query, model, db_vectors, chunks, k=3):
     # 1. Encode the query
     query_vector = model.encode(query)
-    
+
     # 2. Calculate similarity scores
     scores = util.cos_sim(query_vector, db_vectors)
-    
-    # 3. Find best match
-    best_index = torch.argmax(scores)
-    
-    # 4. Return text and score
-    return chunks[best_index], scores[0][best_index]
+
+    # 3. Find top-k matches
+    top_results = torch.topk(scores, k=k)
+
+    # 4. Return results
+    return [
+        {"text": chunks[idx.item()], "score": top_results.values[0][i].item()}
+        for i, idx in enumerate(top_results.indices[0])
+    ]
 ```
 
 **Process Flow**:
@@ -190,7 +203,7 @@ def search_best_chunk(query, model, db_vectors, chunks):
 
 ---
 
-### 5. **retreival.py** (Legacy Version)
+### 6. **retreival.py** (Legacy Version)
 **Note**: This is an older version with different architecture
 
 **Key Difference**:
@@ -202,62 +215,58 @@ def search_best_chunk(query, model, db_vectors, chunks):
 
 ---
 
-### 6. **generation.py** - Answer Generation Module
+### 7. **generation.py** - Answer Generation Module
 **Purpose**: Generate natural language answers using a local LLM
 
 **Code Analysis**:
 ```python
+import os
 import requests
 
 def generate_answer(query, context):
-    # 1. Prompt Engineering
     prompt = f"""
-    You are a helpful assistant. Answer the question based ONLY on the provided context. 
-    If the answer is not in the context, say "I don't know."
-    
+    You are a grounded assistant. Answer ONLY from the context.
+    If the answer is not present, respond with:
+    "The uploaded document does not contain enough information to answer this question."
+
     Context: {context}
-    
+
     Question: {query}
     """
-    
-    # 2. Connect to Ollama
-    url = "http://localhost:11434/api/generate"
-    
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-1.5-flash:generateContent?key={api_key}"
+    )
+
     payload = {
-        "model": "llama3.2",
-        "prompt": prompt,
-        "stream": False 
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}]
     }
-    
-    # 3. Send request
+
     response = requests.post(url, json=payload)
-    return response.json()['response']
+    return response.json()["candidates"][0]["content"]["parts"][0]["text"]
 ```
 
 **Components**:
 
 1. **Prompt Engineering**:
-   - Critical instruction: "Answer based ONLY on the provided context"
+   - Critical instruction: "Answer ONLY from the provided context"
    - Prevents hallucination (making up information)
-   - Fallback: "I don't know" if answer not in context
+   - Fallback: explicit grounded message when context is missing
 
-2. **Ollama Integration**:
-   - Local LLM server running on port 11434
-   - Model: `llama3.2` (can be changed to mistral, etc.)
+2. **Gemini Integration**:
+   - Uses `gemini-1.5-flash` via HTTPS
+   - API key from `GEMINI_API_KEY`
    - Non-streaming mode for simplicity
 
 3. **Error Handling**:
-   - Catches connection errors
-   - Returns error message if Ollama is not running
-
-**Why Local LLM?**
-- Privacy: Data never leaves your machine
-- Cost: No API fees
-- Speed: No network latency (after initial model load)
+   - Connection errors surfaced to the UI
+   - Returns fallback message when generation fails
 
 ---
 
-### 7. **main.py** - Orchestration Module
+### 8. **main.py** - Orchestration Module
 **Purpose**: Tie everything together into an interactive application
 
 **Code Analysis**:
@@ -265,7 +274,7 @@ def generate_answer(query, context):
 def start_app():
     # INITIALIZATION PHASE (Run Once)
     raw_text = reading_data("data.txt")
-    text_chunks = get_chunks(raw_text, 150, 50)
+    text_chunks = get_chunks(raw_text, 600, 120)
     db_vectors, model = vector_embedding(text_chunks)
     
     # CHAT LOOP (Continuous)
@@ -347,7 +356,7 @@ User Query: "When did badminton join the Olympics?"
 └─────────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────────┐
-│ 5. LLM GENERATION (Ollama)               │
+│ 5. LLM GENERATION (Gemini)               │
 │    "Badminton joined the Olympics in    │
 │     1992 as a Summer Olympic sport."     │
 └─────────────────────────────────────────┘
@@ -363,16 +372,16 @@ User Query: "When did badminton join the Olympics?"
 
 | Library | Version | Purpose |
 |---------|---------|---------|
-| `sentence-transformers` | Latest | Text embedding and similarity |
-| `torch` | 2.1+ | Tensor operations |
-| `requests` | Latest | HTTP communication with Ollama |
-| `scikit-learn` | Latest | ML utilities (future use) |
+| `sentence-transformers` | 2.7.0 | Text embedding and similarity |
+| `torch` | 2.6.0 | Tensor operations |
+| `requests` | 2.32.3 | HTTP communication with Gemini |
+| `scikit-learn` | 1.4.2 | ML utilities (future use) |
 
 ### External Services
 
 | Service | Purpose |
 |---------|---------|
-| **Ollama** | Local LLM server (llama3.2 model) |
+| **Gemini API** | Grounded LLM inference |
 | **HuggingFace** | Source of embedding model |
 
 ### Python Version
@@ -390,15 +399,10 @@ conda create -n rag_env python=3.10
 conda activate rag_env
 
 # 2. Install Python packages
-pip install sentence-transformers
-pip install scikit-learn
-pip install requests
+pip install -r requirements.txt
 
-# 3. Install Ollama (Linux/Mac)
-curl https://ollama.ai/install.sh | sh
-
-# 4. Pull LLM model
-ollama pull llama3.2
+# 3. Set Gemini API key
+export GEMINI_API_KEY="your_api_key"
 ```
 
 ### Fix Common Issues
@@ -418,9 +422,8 @@ conda activate rag_env
 # Check PyTorch
 python -c "import torch; print(torch.__version__)"
 
-# Check Ollama
-curl http://localhost:11434
-ollama list
+# Check Gemini API key
+echo $GEMINI_API_KEY
 ```
 
 ---
@@ -529,7 +532,7 @@ Data text:        ~15 KB
 Chunks (50):      ~750 KB
 Vectors (50):     ~75 KB (50 × 384 × 4 bytes)
 Model in RAM:     ~90 MB (MiniLM)
-Ollama LLM:       ~2-4 GB (llama3.2)
+Gemini API:       External inference (no local LLM memory)
 ```
 
 ---
@@ -546,8 +549,8 @@ Ollama LLM:       ~2-4 GB (llama3.2)
    - Understanding semantic search
    - Cosine similarity in practice
 
-3. **Local LLM Usage**
-   - Running LLMs without cloud APIs
+3. **API-based LLM Usage**
+   - Using Gemini for grounded generation
    - Prompt engineering for RAG
 
 4. **Text Processing**
@@ -612,7 +615,7 @@ Ollama LLM:       ~2-4 GB (llama3.2)
 | Issue | Solution |
 |-------|----------|
 | `ModuleNotFoundError` | Activate conda env: `conda activate rag_env` |
-| `Ollama connection error` | Start Ollama: `ollama serve` |
+| `Gemini API error` | Verify `GEMINI_API_KEY` |
 | `OpenMP error` | Set env var: `export KMP_DUPLICATE_LIB_OK=TRUE` |
 | `Out of memory` | Reduce chunk size or use smaller LLM |
 | `Slow responses` | Check CPU usage, consider GPU acceleration |
@@ -632,19 +635,19 @@ MIT License - Free for educational and commercial use
 1. **Simplicity**: No complex dependencies
 2. **Transparency**: Every step is visible and modifiable
 3. **Educational**: Easy to understand for learning
-4. **Privacy**: All data stays local
-5. **Cost-effective**: No API fees
+4. **Privacy**: Only retrieved chunks are sent to Gemini
+5. **Cost-aware**: API usage depends on query volume
 
 ### Trade-offs Made
 
 **Pros**:
 - Simple to understand and modify
-- No external dependencies
+- Clear separation of ingestion/retrieval/generation
 - Fast for small datasets
 
 **Cons**:
 - Limited to small datasets (no database)
-- Single document support
+- Requires external Gemini API access
 - No advanced features (re-ranking, filtering)
 
 ---
@@ -653,7 +656,7 @@ MIT License - Free for educational and commercial use
 
 This RAG system demonstrates a **complete end-to-end pipeline** for building intelligent question-answering systems. It combines:
 - **Semantic search** (vector embeddings)
-- **Local LLM generation** (Ollama)
+- **Gemini generation** (grounded answers)
 - **Modular Python design** (easy to extend)
 
 **Perfect for**: Learning RAG concepts, prototyping, local document Q&A

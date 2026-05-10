@@ -2,7 +2,7 @@
 
 ## 📚 Overview
 
-The RAG system now supports **three different data sources**, each with its own specialized ingestion module. All modules output clean text ready for the RAG pipeline.
+The RAG system now supports **four different data sources**, each with its own specialized ingestion module. All modules output clean text ready for the RAG pipeline.
 
 ---
 
@@ -26,7 +26,25 @@ text = reading_data("notes.txt")
 
 ---
 
-### 2️⃣ YouTube Video Transcripts
+### 2️⃣ CSV File Ingestion
+**File**: `csv_ingestion.py`  
+**Function**: `get_csv_text(file_path)`  
+**Use Case**: Tables, datasets, structured reports
+
+```python
+from csv_ingestion import get_csv_text
+
+text = get_csv_text("report.csv")
+```
+
+**Features**:
+- ✅ Preserves column context (e.g., `Column: value`)
+- ✅ Converts rows into searchable text
+- ✅ Handles missing values gracefully
+
+---
+
+### 3️⃣ YouTube Video Transcripts
 **File**: `youtube_ingestion.py`  
 **Function**: `get_youtube_transcript(url)`  
 **Use Case**: Educational videos, tutorials, lectures
@@ -47,7 +65,7 @@ text = get_youtube_transcript(url)
 
 ---
 
-### 3️⃣ PDF Documents
+### 4️⃣ PDF Documents
 **File**: `pdf_ingestion.py`  
 **Function**: `get_pdf_text(file_path)`  
 **Use Case**: Research papers, books, reports, resumes
@@ -69,15 +87,15 @@ text = get_pdf_text("research_paper.pdf")
 
 ## 🎯 Quick Comparison
 
-| Feature | Text Files | YouTube | PDF |
-|---------|-----------|---------|-----|
-| **Module** | `data_ingestion.py` | `youtube_ingestion.py` | `pdf_ingestion.py` |
-| **Input** | File path | YouTube URL | File path |
-| **Library** | Built-in | `youtube-transcript-api` | `pypdf` |
-| **Speed** | ⚡ Instant | 🔄 2-5 sec | ⚡ < 1 sec |
-| **Pages** | N/A | Single video | Multiple pages |
-| **Error Handling** | Basic | Advanced | Advanced |
-| **Output Format** | Raw text | Clean transcript | Combined pages |
+| Feature | Text Files | CSV Files | YouTube | PDF |
+|---------|-----------|-----------|---------|-----|
+| **Module** | `data_ingestion.py` | `csv_ingestion.py` | `youtube_ingestion.py` | `pdf_ingestion.py` |
+| **Input** | File path | File path | YouTube URL | File path |
+| **Library** | Built-in | Built-in (`csv`) | `youtube-transcript-api` | `pypdf` |
+| **Speed** | ⚡ Instant | ⚡ Instant | 🔄 2-5 sec | ⚡ < 1 sec |
+| **Pages** | N/A | Rows | Single video | Multiple pages |
+| **Error Handling** | Basic | Advanced | Advanced | Advanced |
+| **Output Format** | Raw text | Row-labeled text | Clean transcript | Combined pages |
 
 ---
 
@@ -87,6 +105,7 @@ text = get_pdf_text("research_paper.pdf")
 
 ```python
 from data_ingestion import reading_data
+from csv_ingestion import get_csv_text
 from youtube_ingestion import get_youtube_transcript
 from pdf_ingestion import get_pdf_text
 from chunking import get_chunks
@@ -96,14 +115,15 @@ from generation import generate_answer
 
 # 1. Gather data from multiple sources
 text_data = reading_data("notes.txt")
+csv_data = get_csv_text("metrics.csv")
 youtube_data = get_youtube_transcript("https://youtube.com/watch?v=...")
 pdf_data = get_pdf_text("research.pdf")
 
 # 2. Combine all sources
-all_text = text_data + " " + youtube_data + " " + pdf_data
+all_text = text_data + " " + csv_data + " " + youtube_data + " " + pdf_data
 
 # 3. Process through RAG pipeline
-chunks = get_chunks(all_text, chunk_size=200, overlap=50)
+chunks = get_chunks(all_text, chunk_size=600, overlap=120)
 vectors, model = vector_embedding(chunks)
 
 # 4. Query the system
@@ -124,12 +144,10 @@ print(answer)
 source venv/bin/activate
 
 # Install all required libraries
-pip install sentence-transformers    # For embeddings
-pip install scikit-learn             # ML utilities
-pip install requests                 # HTTP requests
-pip install youtube-transcript-api   # YouTube transcripts
-pip install pypdf                    # PDF extraction
-pip install reportlab                # PDF creation (testing)
+pip install -r requirements.txt
+
+# Set Gemini API key
+export GEMINI_API_KEY="your_api_key"
 ```
 
 ---
@@ -169,6 +187,7 @@ RAG_SYSTEM/
 │
 ├── 📥 DATA INGESTION LAYER
 │   ├── data_ingestion.py         (Text files)
+│   ├── csv_ingestion.py          (CSV files)
 │   ├── youtube_ingestion.py      (YouTube videos)
 │   └── pdf_ingestion.py          (PDF documents)
 │

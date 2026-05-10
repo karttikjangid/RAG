@@ -2,12 +2,17 @@
 import time
 import sys
 from data_ingestion import reading_data
+from csv_ingestion import get_csv_text
 from youtube_ingestion import get_youtube_transcript
 from pdf_ingestion import get_pdf_text
 from chunking import get_chunks
 from embedding import vector_embedding
 from retrieval import search_best_chunks
-from generation import generate_answer
+from generation import NO_ANSWER_RESPONSE, generate_answer
+
+DEFAULT_CHUNK_SIZE = 600
+DEFAULT_CHUNK_OVERLAP = 120
+MIN_SIMILARITY = 0.2
 
 def start_app():
     print("\n" + "=" * 70)
@@ -28,7 +33,8 @@ def start_app():
         print("   1. Add Text File (.txt)")
         print("   2. Add PDF Document (.pdf)")
         print("   3. Add YouTube Video (URL)")
-        print("   4. DONE - Start Processing")
+        print("   4. Add CSV File (.csv)")
+        print("   5. DONE - Start Processing")
         print()
         
         # Show current status
@@ -37,10 +43,10 @@ def start_app():
             print(f"📈 Total characters: {len(all_text):,}")
             print()
         
-        choice = input("Enter your choice (1-4): ").strip()
+        choice = input("Enter your choice (1-5): ").strip()
         
         # Option 4: Done - break the loop
-        if choice == "4":
+        if choice == "5":
             if not all_text:
                 print("\n⚠️  No data loaded yet! Please add at least one source.")
                 continue
@@ -74,10 +80,17 @@ def start_app():
             print(f"Loading: {video_url}")
             raw_text = get_youtube_transcript(video_url)
             source_name = f"YouTube: {video_url[:50]}..."
+
+        elif choice == "4":
+            # CSV File
+            csv_path = input("Enter CSV file path: ").strip()
+            print(f"Loading: {csv_path}")
+            raw_text = get_csv_text(csv_path)
+            source_name = f"CSV: {csv_path}"
             
         else:
-            print("❌ Invalid choice! Please select 1-4.")
-            continue
+        print("❌ Invalid choice! Please select 1-5.")
+        continue
         
         # Safety Check: Validate loaded data
         if not raw_text or raw_text.startswith("❌"):
@@ -112,7 +125,7 @@ def start_app():
     
     # 2. Chunk the Data
     print("\n--- ✂️  CHUNKING DATA ---")
-    text_chunks = get_chunks(raw_text, 200, 50)
+    text_chunks = get_chunks(raw_text, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP)
     print(f"   ✅ Created {len(text_chunks)} chunks")
     
     # 3. Embed (Create Vector Embeddings)
@@ -150,12 +163,15 @@ def start_app():
         
         # B. GENERATION - Generate answer with LLM
         print("🤖 Generating answer...")
-        try:
-            answer = generate_answer(query, best_context)
-            print(f"\n💬 Answer:\n{answer}")
-        except Exception as e:
-            print(f"\n⚠️  LLM not available. Here's the retrieved context:")
-            print(f"{best_context[:500]}...")
+        if score < MIN_SIMILARITY:
+            print(f"\n💬 Answer:\n{NO_ANSWER_RESPONSE}")
+        else:
+            try:
+                answer = generate_answer(query, best_context)
+                print(f"\n💬 Answer:\n{answer}")
+            except Exception as e:
+                print(f"\n⚠️  LLM not available. Here's the retrieved context:")
+                print(f"{best_context[:500]}...")
         
         end_ts = time.time()
         print(f"\n⏱️  Time taken: {end_ts - start_ts:.2f}s")

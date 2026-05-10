@@ -1,13 +1,15 @@
-import streamlit as st
-from youtube_ingestion import get_youtube_transcript
-from pdf_ingestion import get_pdf_text
-from chunking import get_chunks
-from embedding import vector_embedding
-from retrieval import search_best_chunks
-from generation import generate_answer
 import os
-from datetime import datetime
+from pathlib import Path
+
+import streamlit as st
 from sentence_transformers import SentenceTransformer
+
+from csv_ingestion import get_csv_text
+from generation import NO_ANSWER_RESPONSE, generate_answer
+from chunking import get_chunks
+from pdf_ingestion import get_pdf_text
+from retrieval import search_best_chunks
+from youtube_ingestion import get_youtube_transcript
 
 # Cache the embedding model (loads only once)
 @st.cache_resource(show_spinner="Loading embedding model...")
@@ -23,6 +25,26 @@ def cached_pdf_extraction(file_name, file_bytes):
     with open(temp_path, "wb") as f:
         f.write(file_bytes)
     text = get_pdf_text(temp_path)
+    os.remove(temp_path)
+    return text
+
+
+@st.cache_data(show_spinner="Reading text file...")
+def cached_text_extraction(file_name, file_bytes):
+    """Cache TXT text extraction"""
+    try:
+        return file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return file_bytes.decode("utf-8", errors="ignore")
+
+
+@st.cache_data(show_spinner="Extracting CSV text...")
+def cached_csv_extraction(file_name, file_bytes):
+    """Cache CSV text extraction"""
+    temp_path = f"/tmp/{file_name}"
+    with open(temp_path, "wb") as f:
+        f.write(file_bytes)
+    text = get_csv_text(temp_path)
     os.remove(temp_path)
     return text
 
@@ -43,6 +65,11 @@ def cached_chunking(text, chunk_size=500, overlap=100):
 def cached_embedding(_model, chunks):
     """Cache vector embeddings creation"""
     return _model.encode(chunks)
+
+
+DEFAULT_CHUNK_SIZE = 600
+DEFAULT_CHUNK_OVERLAP = 120
+MIN_SIMILARITY = 0.2
 
 # Page Configuration
 st.set_page_config(
@@ -408,6 +435,29 @@ if 'messages' not in st.session_state:
 if 'processing' not in st.session_state:
     st.session_state.processing = False
 
+
+def rebuild_embeddings():
+    if not st.session_state.source_details:
+        st.session_state.full_text = ""
+        st.session_state.vector_db = None
+        st.session_state.model = None
+        st.session_state.chunks = None
+        return
+
+    st.session_state.full_text = "\n\n".join(
+        [source["content"] for source in st.session_state.source_details]
+    )
+
+    model = load_embedding_model()
+    st.session_state.chunks = cached_chunking(
+        st.session_state.full_text,
+        DEFAULT_CHUNK_SIZE,
+        DEFAULT_CHUNK_OVERLAP,
+    )
+    vectors = cached_embedding(model, st.session_state.chunks)
+    st.session_state.vector_db = vectors
+    st.session_state.model = model
+
 # Sidebar
 with st.sidebar:
     # App Header
@@ -444,48 +494,53 @@ with st.sidebar:
         st.markdown('<div style="padding: 1rem 0;">', unsafe_allow_html=True)
         
         uploaded_files = st.file_uploader(
-            "Drop PDF files here",
-            type=['pdf'],
+            "Drop PDF, TXT, or CSV files here",
+            type=["pdf", "txt", "csv"],
             accept_multiple_files=True,
-            key="pdf_uploader",
-            label_visibility="collapsed"
+            key="file_uploader",
+            label_visibility="collapsed",
         )
-        
+
         if uploaded_files:
             for uploaded_file in uploaded_files:
                 if uploaded_file.name not in st.session_state.sources:
-                    # Process immediately with caching
-                    file_bytes = uploaded_file.getbuffer()
-                    pdf_text = cached_pdf_extraction(uploaded_file.name, bytes(file_bytes))
-                    
-                    st.session_state.full_text += "\n\n" + pdf_text
+                    file_bytes = bytes(uploaded_file.getbuffer())
+                    extension = Path(uploaded_file.name).suffix.lower()
+
+                    if extension == ".pdf":
+                        extracted_text = cached_pdf_extraction(uploaded_file.name, file_bytes)
+                        source_type = "pdf"
+                    elif extension == ".txt":
+                        extracted_text = cached_text_extraction(uploaded_file.name, file_bytes)
+                        source_type = "txt"
+                    elif extension == ".csv":
+                        extracted_text = cached_csv_extraction(uploaded_file.name, file_bytes)
+                        source_type = "csv"
+                    else:
+                        st.warning("Unsupported file type.")
+                        continue
+
+                    if not extracted_text or extracted_text.startswith("❌"):
+                        st.error(f"Error processing {uploaded_file.name}: {extracted_text}")
+                        continue
+
                     st.session_state.sources.append(uploaded_file.name)
-                    
-                    # Store metadata
-                    st.session_state.source_details.append({
-                        'name': uploaded_file.name,
-                        'type': 'pdf',
-                        'size': len(file_bytes),
-                        'time': 'Just now'
-                    })
-                    
-                    # Auto-process with caching
+
+                    st.session_state.source_details.append(
+                        {
+                            "name": uploaded_file.name,
+                            "type": source_type,
+                            "size": len(file_bytes),
+                            "time": "Just now",
+                            "content": extracted_text,
+                        }
+                    )
+
                     if not st.session_state.processing:
                         st.session_state.processing = True
-                        
-                        # Load model once (cached)
-                        model = load_embedding_model()
-                        
-                        # Chunk text (cached with 500 char chunks, 100 char overlap)
-                        st.session_state.chunks = cached_chunking(st.session_state.full_text, 500, 100)
-                        
-                        # Create embeddings (cached)
-                        vectors = cached_embedding(model, st.session_state.chunks)
-                        
-                        st.session_state.vector_db = vectors
-                        st.session_state.model = model
+                        rebuild_embeddings()
                         st.session_state.processing = False
-                    
+
                     st.rerun()
         
         st.markdown('</div>', unsafe_allow_html=True)
@@ -504,36 +559,24 @@ with st.sidebar:
         if st.button("Add YouTube Video", key="add_youtube", use_container_width=True):
             if youtube_url and youtube_url not in st.session_state.sources:
                 try:
-                    # Use cached YouTube transcript
                     yt_text = cached_youtube_transcript(youtube_url)
-                    st.session_state.full_text += "\n\n" + yt_text
                     st.session_state.sources.append(youtube_url)
-                    
-                    # Store metadata
-                    st.session_state.source_details.append({
-                        'name': youtube_url.split('v=')[-1][:20] + "...",
-                        'type': 'youtube',
-                        'size': 'Video',
-                        'time': 'Just now'
-                    })
-                    
-                    # Auto-process with caching
+
+                    st.session_state.source_details.append(
+                        {
+                            "name": youtube_url.split("v=")[-1][:20] + "...",
+                            "type": "youtube",
+                            "size": "Video",
+                            "time": "Just now",
+                            "content": yt_text,
+                        }
+                    )
+
                     if not st.session_state.processing:
                         st.session_state.processing = True
-                        
-                        # Load model once (cached)
-                        model = load_embedding_model()
-                        
-                        # Chunk text (cached with 500 char chunks, 100 char overlap)
-                        st.session_state.chunks = cached_chunking(st.session_state.full_text, 500, 100)
-                        
-                        # Create embeddings (cached)
-                        vectors = cached_embedding(model, st.session_state.chunks)
-                        
-                        st.session_state.vector_db = vectors
-                        st.session_state.model = model
+                        rebuild_embeddings()
                         st.session_state.processing = False
-                    
+
                     st.success("✅ Added!")
                     st.rerun()
                 except Exception as e:
@@ -554,13 +597,25 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     if st.session_state.source_details:
+        icon_map = {
+            "pdf": "📄",
+            "txt": "📝",
+            "csv": "🧮",
+            "youtube": "🎥",
+        }
+
         for idx, source in enumerate(st.session_state.source_details):
-            icon = "📄" if source['type'] == 'pdf' else "🎥"
-            size_text = f"{source['size'] / (1024*1024):.1f} MB" if isinstance(source['size'], int) else source['size']
-            
+            icon = icon_map.get(source["type"], "📄")
+            if isinstance(source["size"], int):
+                size_mb = source["size"] / (1024 * 1024)
+                size_text = f"{size_mb:.2f} MB" if size_mb >= 1 else f"{source['size'] / 1024:.1f} KB"
+            else:
+                size_text = source["size"]
+
             col1, col2 = st.columns([5, 1])
             with col1:
-                st.markdown(f"""
+                st.markdown(
+                    f"""
                     <div class="source-card">
                         <div style="font-size: 1.5rem;">{icon}</div>
                         <div style="flex: 1; min-width: 0;">
@@ -568,33 +623,16 @@ with st.sidebar:
                             <p style="font-size: 0.75rem; color: #6e7c74; margin: 0.25rem 0 0 0;">{size_text} • {source['time']}</p>
                         </div>
                     </div>
-                """, unsafe_allow_html=True)
+                """,
+                    unsafe_allow_html=True,
+                )
             with col2:
                 if st.button("🗑️", key=f"del_{idx}", help="Delete source"):
-                    # Remove source
                     st.session_state.sources.pop(idx)
                     st.session_state.source_details.pop(idx)
-                    # Reprocess if sources remain
-                    if st.session_state.sources:
-                        st.session_state.processing = True
-                        
-                        # Load model once (cached)
-                        model = load_embedding_model()
-                        
-                        # Chunk text (cached with 500 char chunks, 100 char overlap)
-                        st.session_state.chunks = cached_chunking(st.session_state.full_text, 500, 100)
-                        
-                        # Create embeddings (cached)
-                        vectors = cached_embedding(model, st.session_state.chunks)
-                        
-                        st.session_state.vector_db = vectors
-                        st.session_state.model = model
-                        st.session_state.processing = False
-                    else:
-                        st.session_state.full_text = ""
-                        st.session_state.vector_db = None
-                        st.session_state.model = None
-                        st.session_state.chunks = None
+                    st.session_state.processing = True
+                    rebuild_embeddings()
+                    st.session_state.processing = False
                     st.rerun()
     else:
         st.markdown("""
@@ -653,11 +691,14 @@ if prompt := st.chat_input("Ask a question about your sources..."):
                         k=3
                     )
                     
-                    # Combine context
-                    context = "\n\n".join([chunk['text'] for chunk in top_chunks])
-                    
-                    # Generate answer
-                    answer = generate_answer(prompt, context)
+                    context_chunks = [chunk["text"] for chunk in top_chunks if chunk["text"].strip()]
+                    context = "\n\n".join(context_chunks)
+                    best_score = top_chunks[0]["score"] if top_chunks else 0
+
+                    if not context or best_score < MIN_SIMILARITY:
+                        answer = NO_ANSWER_RESPONSE
+                    else:
+                        answer = generate_answer(prompt, context)
                     
                     # Display answer
                     st.markdown(answer)
@@ -675,4 +716,3 @@ if prompt := st.chat_input("Ask a question about your sources..."):
                         "role": "assistant",
                         "content": error_msg
                     })
-

@@ -9,7 +9,11 @@ from pdf_ingestion import get_pdf_text
 from chunking import get_chunks
 from embedding import vector_embedding
 from retrieval import search_best_chunks
-from generation import generate_answer
+from generation import NO_ANSWER_RESPONSE, generate_answer
+
+DEFAULT_CHUNK_SIZE = 600
+DEFAULT_CHUNK_OVERLAP = 120
+MIN_SIMILARITY = 0.2
 
 def main():
     print("\n" + "=" * 70)
@@ -32,8 +36,11 @@ def main():
     
     # Step 2: Chunk the text
     print("\n2️⃣  CHUNKING TEXT...")
-    chunks = get_chunks(text, chunk_size=300, overlap=75)
-    print(f"   ✅ Created {len(chunks)} chunks (300 chars each, 75 overlap)")
+    chunks = get_chunks(text, chunk_size=DEFAULT_CHUNK_SIZE, overlap=DEFAULT_CHUNK_OVERLAP)
+    print(
+        f"   ✅ Created {len(chunks)} chunks "
+        f"({DEFAULT_CHUNK_SIZE} chars each, {DEFAULT_CHUNK_OVERLAP} overlap)"
+    )
     
     # Step 3: Create embeddings
     print("\n3️⃣  CREATING VECTOR EMBEDDINGS...")
@@ -90,8 +97,11 @@ def main():
         # Generate answer
         print(f"\n🤖 Generating answer...")
         try:
-            answer = generate_answer(query, best_result['text'])
-            print(f"\n💬 Answer:\n{answer}")
+            if best_result["score"] < MIN_SIMILARITY:
+                print(f"\n💬 Answer:\n{NO_ANSWER_RESPONSE}")
+            else:
+                answer = generate_answer(query, best_result["text"])
+                print(f"\n💬 Answer:\n{answer}")
         except Exception as e:
             print(f"\n⚠️  LLM not available. Using retrieved context:")
             print(f"\n{best_result['text'][:500]}...")

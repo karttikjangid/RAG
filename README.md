@@ -1,6 +1,6 @@
-# 🎓 LecturMate - Multi-Modal RAG Application
+# 🎓 LecturMate - NotebookLM-Style RAG Application
 
-> A powerful, local-first Retrieval-Augmented Generation system with a beautiful Streamlit web interface for querying your documents and YouTube videos using AI.
+> A powerful, Gemini-powered Retrieval-Augmented Generation system with a beautiful Streamlit web interface for querying your documents and YouTube videos using AI.
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-blue.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.52%2B-FF4B4B.svg)](https://streamlit.io/)
@@ -8,17 +8,18 @@
 
 ## 🌟 Overview
 
-**LecturMate** is a complete RAG (Retrieval-Augmented Generation) system that lets you chat with your documents and video transcripts using AI - entirely offline and free. Built with a modern, calm green UI inspired by contemporary design principles.
+**LecturMate** is a complete RAG (Retrieval-Augmented Generation) system that lets you chat with PDFs, TXT files, CSVs, and video transcripts using **Gemini** for grounded answers. Built with a modern, calm green UI inspired by contemporary design principles.
 
 ### Key Capabilities
 
-- 📄 **Multi-Source Ingestion**: PDFs, YouTube videos, and text files
+- 📄 **Multi-Source Ingestion**: PDFs, TXT files, CSVs, and YouTube videos
 - 🧠 **Smart Chunking**: Sliding window approach with configurable overlap
 - 🔍 **Semantic Search**: Find relevant context using vector embeddings
-- 💬 **AI-Powered Answers**: Local LLM generation with Ollama (no API costs!)
+- 🗂️ **Vector Store**: In-memory embedding matrix for fast similarity search
+- 💬 **AI-Powered Answers**: Gemini API (gemini-1.5-flash) with grounded responses
 - 🎨 **Beautiful UI**: Modern Streamlit interface with light green theme
 - ⚡ **Performance Optimized**: Comprehensive caching for lightning-fast responses
-- 🔒 **Privacy First**: Everything runs locally - your data never leaves your machine
+- 🔒 **Grounded RAG**: Answers are restricted to retrieved context with explicit no-hallucination fallback
 
 
 ## 📸 Screenshots
@@ -46,20 +47,40 @@
 │                                                             │
 │  1. INGESTION       →  2. CHUNKING    →  3. EMBEDDING     │
 │  ┌──────────────┐     ┌───────────┐     ┌──────────────┐  │
-│  │ PDF Files    │     │ Sliding   │     │ Sentence     │  │
-│  │ YouTube URLs │  →  │ Window    │  →  │ Transformers │  │
-│  │ Text Files   │     │ (500/100) │     │ (384-dim)    │  │
+│  │ PDF/TXT/CSV │      │ Sliding   │     │ Sentence     │  │
+│  │ YouTube URLs│  →   │ Window    │  →  │ Transformers │  │
+│  │            │       │ (600/120) │     │ (384-dim)    │  │
 │  └──────────────┘     └───────────┘     └──────────────┘  │
 │         ↓                    ↓                   ↓         │
 │  4. RETRIEVAL       ←  5. GENERATION   ←  User Query      │
 │  ┌──────────────┐     ┌───────────────────────────┐       │
-│  │ Cosine       │     │ Ollama LLM (llama3.2)    │       │
+│  │ Cosine       │     │ Gemini (gemini-1.5-flash)│       │
 │  │ Similarity   │  ←  │ + Retrieved Context       │       │
-│  │ Top-k=3      │     │ = Accurate Answer         │       │
+│  │ Top-k=3      │     │ = Grounded Answer         │       │
 │  └──────────────┘     └───────────────────────────┘       │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+## ✅ Grounding & Hallucination Prevention
+
+LecturMate strictly grounds answers in retrieved context:
+
+- **Prompt guardrails** instruct Gemini to use only provided chunks.
+- **Similarity threshold** blocks low-confidence retrievals.
+- **Fallback message** when context is insufficient:
+  *"The uploaded document does not contain enough information to answer this question."*
+
+---
+
+## 🧩 Chunking Strategy
+
+- **Splitter**: Existing sliding-window chunking in `chunking.py`
+- **Chunk size**: ~600 characters (recommended 500–1000)
+- **Overlap**: ~120 characters (recommended 100–200)
+- **Why overlap**: Preserves context across chunk boundaries
 
 ---
 
@@ -75,12 +96,13 @@ RAG/
 │
 ├── 🔧 Core Modules
 │   ├── data_ingestion.py         # Text file ingestion
+│   ├── csv_ingestion.py          # CSV ingestion
 │   ├── pdf_ingestion.py          # PDF extraction (pypdf)
 │   ├── youtube_ingestion.py      # YouTube transcript fetching
 │   ├── chunking.py               # Sliding window text splitting
 │   ├── embedding.py              # Vector embeddings (all-MiniLM-L6-v2)
 │   ├── retrieval.py              # Semantic search with cosine similarity
-│   └── generation.py             # LLM answer generation (Ollama)
+│   └── generation.py             # LLM answer generation (Gemini)
 │
 ├── 📚 Documentation
 │   ├── docs/
@@ -106,7 +128,7 @@ RAG/
 ### Prerequisites
 
 - **Python 3.8+** (Python 3.10+ recommended)
-- **Ollama** installed and running ([Download here](https://ollama.ai))
+- **Gemini API key** (set in `GEMINI_API_KEY`)
 - **4GB+ RAM** recommended for embedding model
 
 ### Installation
@@ -121,20 +143,14 @@ RAG/
 
 3. **Install dependencies:**
    ```bash
-   pip install streamlit==1.52.2
-   pip install sentence-transformers
-   pip install scikit-learn
-   pip install youtube-transcript-api
-   pip install pypdf
-   pip install torch
+   pip install -r requirements.txt
    ```
-
-4. **Install and configure Ollama:**
+ 
+4. **Set environment variables:**
    ```bash
-   # Download from https://ollama.ai, then:
-   ollama pull llama3.2
-   ollama serve  # Keep this running in a separate terminal
+   export GEMINI_API_KEY="your_api_key"
    ```
+   You can also copy `.env.example` to `.env` and load it in your environment.
 
 ### Launch the Web App
 
@@ -158,8 +174,8 @@ python main.py
 ### Web Interface (Recommended)
 
 1. **Add Sources:**
-   - Click **"📄 PDF Upload"** tab to upload PDF documents
-   - Click **"🎥 YouTube"** tab to paste video URLs
+   - Upload **PDF, TXT, or CSV** files
+   - Click **"🎥 YouTube"** tab to paste video URLs (optional)
    - Sources are auto-processed and displayed in the sidebar
 
 2. **Ask Questions:**
@@ -201,14 +217,44 @@ Enter PDF file path: research_paper.pdf
 
 ---
 
+## 🚀 Deployment
+
+LecturMate is deployable on Render or Railway:
+
+1. Add a `GEMINI_API_KEY` environment variable in your hosting provider.
+2. Install dependencies from `requirements.txt`.
+3. Set the start command:
+   ```bash
+   streamlit run app.py --server.port $PORT --server.address 0.0.0.0
+   ```
+4. Deploy and open the generated public URL.
+
+---
+
+## 🧪 Example Queries
+
+- "Summarize the key findings from the uploaded PDF."
+- "What are the main columns and trends in the CSV data?"
+- "List the key definitions mentioned in the TXT notes."
+
+---
+
+## 📸 Screenshots (Placeholders)
+
+- Upload + source library view *(add screenshot here)*
+- Chat interface with grounded answer *(add screenshot here)*
+- Mobile responsive layout *(add screenshot here)*
+
+---
+
 ## ⚙️ Configuration
 
 ### Chunking Parameters
 
 Adjust in `chunking.py` or pass to functions:
 ```python
-chunk_size = 500   # Characters per chunk
-overlap = 100      # Overlapping characters (improves context continuity)
+chunk_size = 600   # Characters per chunk (500–1000 recommended)
+overlap = 120      # Overlapping characters (100–200 recommended)
 ```
 
 ### Embedding Model
@@ -221,10 +267,9 @@ model = SentenceTransformer('all-MiniLM-L6-v2')  # 384 dimensions
 
 ### LLM Model
 
-Update in `generation.py`:
+Gemini is configured in `generation.py`:
 ```python
-model = "llama3.2"  # Default
-# Alternatives: "mistral", "llama2", "phi3", etc.
+GEMINI_MODEL = "gemini-1.5-flash"
 ```
 
 ### Retrieval Settings
@@ -253,9 +298,10 @@ k = 3  # Number of top chunks to retrieve
 
 ### Retrieval Mechanism
 1. User query → Embedded to 384-dim vector
-2. Cosine similarity computed against all chunks
-3. Top-3 most relevant chunks selected
-4. Combined as context for LLM
+2. **Vector DB**: In-memory embedding matrix stored in session state
+3. Cosine similarity computed against all chunks
+4. Top-3 most relevant chunks selected
+5. Combined as context for Gemini
 
 ### UI/UX Design
 - **Light Green Theme**: Calming #66bb6a, #4caf50 color palette
@@ -274,6 +320,7 @@ For developers who want to integrate LecturMate into their own projects:
 
 ```python
 from pdf_ingestion import get_pdf_text
+from csv_ingestion import get_csv_text
 from youtube_ingestion import get_youtube_transcript
 from chunking import get_chunks
 from embedding import vector_embedding
@@ -282,11 +329,12 @@ from generation import generate_answer
 
 # 1. Ingest data
 pdf_text = get_pdf_text("research.pdf")
+csv_text = get_csv_text("metrics.csv")
 yt_text = get_youtube_transcript("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-combined_text = pdf_text + "\n\n" + yt_text
+combined_text = pdf_text + "\n\n" + csv_text + "\n\n" + yt_text
 
 # 2. Chunk the text
-chunks = get_chunks(combined_text, chunk_size=500, overlap=100)
+chunks = get_chunks(combined_text, chunk_size=600, overlap=120)
 
 # 3. Create embeddings
 vectors, model = vector_embedding(chunks)
@@ -316,9 +364,13 @@ text = get_youtube_transcript("https://youtu.be/VIDEO_ID")  # Returns: str
 from data_ingestion import reading_data
 text = reading_data("data.txt")  # Returns: str
 
+# CSV Ingestion
+from csv_ingestion import get_csv_text
+text = get_csv_text("data.csv")  # Returns: str
+
 # Chunking
 from chunking import get_chunks
-chunks = get_chunks(text, chunk_size=500, overlap=100)  # Returns: list[str]
+chunks = get_chunks(text, chunk_size=600, overlap=120)  # Returns: list[str]
 
 # Embedding
 from embedding import vector_embedding
@@ -367,16 +419,10 @@ source venv/bin/activate
 pip install --upgrade streamlit
 ```
 
-**2. Ollama connection error**
+**2. Gemini API errors**
 ```bash
-# Check if Ollama is running
-curl http://localhost:11434
-
-# Start Ollama service
-ollama serve
-
-# Verify model is downloaded
-ollama list
+# Verify the API key is set
+echo $GEMINI_API_KEY
 ```
 
 **3. PyTorch/CUDA issues**
@@ -417,7 +463,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')  # 384-dim (current)
 1. **Caching**: The web app automatically caches models, PDFs, and embeddings - subsequent runs are much faster
 2. **Chunk Size**: Larger chunks (500-1000) = better context but slower; smaller chunks (200-300) = faster but may miss context
 3. **Top-k**: Retrieving fewer chunks (k=2-3) is faster than k=5-10
-4. **LLM Model**: Smaller models like `phi3` are faster than `llama3.2` but may have lower quality
+4. **LLM Model**: `gemini-1.5-flash` is fast; use `gemini-2.0-flash` for higher quality
 
 ---
 
@@ -459,7 +505,7 @@ This project is licensed under the **MIT License** - see the LICENSE file for de
 ## 🙏 Acknowledgments
 
 - **Sentence Transformers** for efficient embedding models
-- **Ollama** for local LLM inference
+- **Gemini API** for grounded LLM inference
 - **Streamlit** for the beautiful web framework
 - **YouTube Transcript API** for easy transcript access
 - **pypdf** for PDF text extraction
