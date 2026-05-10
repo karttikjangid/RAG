@@ -461,7 +461,7 @@ def rebuild_embeddings():
 
 def format_file_size(size):
     if not isinstance(size, int):
-        return size
+        return str(size)
     size_mb = size / (1024 * 1024)
     return f"{size_mb:.2f} MB" if size_mb >= 1 else f"{size / 1024:.1f} KB"
 

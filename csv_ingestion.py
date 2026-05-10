@@ -35,8 +35,9 @@ def get_csv_text(file_path):
             for index, row in enumerate(reader, start=1):
                 fields = []
                 for field in reader.fieldnames:
-                    value = (row.get(field) or "").strip()
-                    if value:
+                    raw_value = row.get(field)
+                    value = "" if raw_value is None else str(raw_value).strip()
+                    if value != "":
                         fields.append(f"{field}: {value}")
                 if fields:
                     rows.append(f"Row {index}: " + "; ".join(fields))

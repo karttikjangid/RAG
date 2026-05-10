@@ -40,9 +40,14 @@ def generate_answer(query, context):
         },
     }
 
-    response = requests.post(url, json=payload, timeout=30)
-    response.raise_for_status()
-    data = response.json()
+    try:
+        response = requests.post(url, json=payload, timeout=30)
+        response.raise_for_status()
+        data = response.json()
+    except requests.exceptions.RequestException as exc:
+        raise RuntimeError("Failed to connect to Gemini API.") from exc
+    except ValueError as exc:
+        raise RuntimeError("Invalid response from Gemini API.") from exc
 
     candidates = data.get("candidates", [])
     if not candidates:
