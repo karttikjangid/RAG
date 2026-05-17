@@ -8,12 +8,12 @@ This demonstrates the complete RAG pipeline using the
 from pdf_ingestion import get_pdf_text
 from chunking import get_chunks
 from embedding import vector_embedding
-from retrieval import search_best_chunks
-from generation import NO_ANSWER_RESPONSE, generate_answer
+from generation import NO_ANSWER_RESPONSE
+from crag.config import CRAGConfig
+from crag.controller import CorrectiveRAGController
+from crag.hybrid_retrieval import HybridRetriever
+from crag.logging_utils import get_logger
 
-DEFAULT_CHUNK_SIZE = 600
-DEFAULT_CHUNK_OVERLAP = 120
-MIN_SIMILARITY = 0.2  # Minimum cosine similarity (0.0-1.0) to trust retrieved context
 
 def main():
     print("\n" + "=" * 70)
@@ -36,16 +36,24 @@ def main():
     
     # Step 2: Chunk the text
     print("\n2️⃣  CHUNKING TEXT...")
-    chunks = get_chunks(text, chunk_size=DEFAULT_CHUNK_SIZE, overlap=DEFAULT_CHUNK_OVERLAP)
+    config = CRAGConfig.from_env()
+    chunks = get_chunks(text, chunk_size=config.chunk_size, overlap=config.chunk_overlap)
     print(
         f"   ✅ Created {len(chunks)} chunks "
-        f"({DEFAULT_CHUNK_SIZE} chars each, {DEFAULT_CHUNK_OVERLAP} overlap)"
+        f"({config.chunk_size} chars each, {config.chunk_overlap} overlap)"
     )
     
     # Step 3: Create embeddings
     print("\n3️⃣  CREATING VECTOR EMBEDDINGS...")
     vectors, model = vector_embedding(chunks)
     print(f"   ✅ Generated {len(vectors)} vectors (384-dimensional)")
+
+    retriever = HybridRetriever(chunks, vectors, model, config)
+    controller = CorrectiveRAGController(
+        config,
+        retriever,
+        logger=get_logger("crag", config.log_level),
+    )
     
     # Step 4: Interactive Q&A
     print("\n" + "=" * 70)
@@ -87,24 +95,18 @@ def main():
         
         print(f"\n🔍 Searching knowledge base...")
         
-        # Retrieve relevant chunks
-        results = search_best_chunks(query, model, vectors, chunks, k=3)
-        
-        best_result = results[0]
-        print(f"\n📄 Best Match (confidence: {best_result['score']:.4f}):")
-        print(f"   {best_result['text'][:200]}...")
-        
-        # Generate answer
-        print(f"\n🤖 Generating answer...")
+        print(f"\n🤖 Running Corrective RAG...")
         try:
-            if best_result["score"] < MIN_SIMILARITY:
-                print(f"\n💬 Answer:\n{NO_ANSWER_RESPONSE}")
-            else:
-                answer = generate_answer(query, best_result["text"])
-                print(f"\n💬 Answer:\n{answer}")
+            response = controller.run(query)
+            evaluation = response.evaluation
+            print(
+                "\n📄 Retrieval quality: "
+                f"{evaluation.decision} (max score {evaluation.max_score:.4f})"
+            )
+            print(f"\n💬 Answer:\n{response.answer}")
         except Exception as e:
-            print(f"\n⚠️  LLM not available. Using retrieved context:")
-            print(f"\n{best_result['text'][:500]}...")
+            print(f"\n⚠️  CRAG pipeline failed: {e}")
+            print(f"\n💬 Answer:\n{NO_ANSWER_RESPONSE}")
         
         print("\n" + "-" * 70 + "\n")
 

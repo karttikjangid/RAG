@@ -9,16 +9,26 @@ NO_ANSWER_RESPONSE = (
 GEMINI_MODEL = "gemini-3-flash-preview"
 NVIDIA_MODEL = "deepseek-ai/deepseek-v4-flash"
 
-def _build_prompt(query, context):
+def _build_prompt(query, context, strict):
+    guardrail = (
+        "Use ONLY the provided context to answer. "
+        "If the answer is not present, respond with exactly: "
+        f'"{NO_ANSWER_RESPONSE}". '
+    )
+    if strict:
+        guardrail += (
+            "Do not infer or speculate. "
+            "Only answer if the context explicitly states the facts. "
+        )
+
     return (
         "You are a grounded assistant for a RAG system. "
-        "Use ONLY the provided context to answer. "
-        f'If the answer is not present, respond with exactly: "{NO_ANSWER_RESPONSE}".\n\n'
+        f"{guardrail}\n\n"
         f"Context:\n{context}\n\nQuestion:\n{query}\n"
     )
 
-def generate_answer(query, context):
-    prompt = _build_prompt(query, context)
+def generate_answer(query, context, strict=False):
+    prompt = _build_prompt(query, context, strict)
     
     nvidia_api_key = os.getenv("NVIDIA_API_KEY")
     gemini_api_key = os.getenv("GEMINI_API_KEY")

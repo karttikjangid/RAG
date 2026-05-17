@@ -14,7 +14,7 @@
 
 ## 🎯 System Overview
 
-This is a **Retrieval-Augmented Generation (RAG)** system built in Python that enables intelligent question-answering over documents. The system combines **semantic search** using vector embeddings with **Gemini-powered generation** to provide accurate, context-aware answers.
+This is a **Corrective RAG (CRAG)** system built in Python that enables intelligent question-answering over documents. The system combines **hybrid retrieval** (vector + BM25), **retrieval evaluation**, and **grounded generation** with answer validation to provide accurate, context-aware answers while reducing hallucinations.
 
 ### What is RAG?
 RAG is a technique that enhances Large Language Model (LLM) responses by:
@@ -23,11 +23,13 @@ RAG is a technique that enhances Large Language Model (LLM) responses by:
 3. **Generating** an answer based on the retrieved information
 
 ### Key Features
-- ✅ **Gemini integration**: Uses `gemini-1.5-flash` via API
+- ✅ **Hybrid retrieval**: Vector similarity + BM25 keyword search
+- ✅ **Retrieval evaluation**: Classifies relevance before generation
+- ✅ **Corrective retry**: Query rewrite + rerank on weak retrieval
 - ✅ **Grounded answers**: Enforced no-hallucination fallback
+- ✅ **Answer validation**: Flags unsupported claims and regenerates
 - ✅ **Modular design**: Each component is independent and testable
 - ✅ **Efficient chunking**: Sliding window approach with overlap for better context
-- ✅ **Fast retrieval**: Uses cosine similarity on vector embeddings
 - ✅ **Conversational**: Interactive chat interface
 
 ---
@@ -36,7 +38,7 @@ RAG is a technique that enhances Large Language Model (LLM) responses by:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      RAG PIPELINE                            │
+│                    CORRECTIVE RAG PIPELINE                  │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  1. DATA INGESTION                                           │
@@ -48,11 +50,20 @@ RAG is a technique that enhances Large Language Model (LLM) responses by:
 │  3. EMBEDDING                                                │
 │     └─> Convert chunks to 384-dim vectors                   │
 │                                                              │
-│  4. RETRIEVAL (Query Time)                                   │
-│     └─> Find most similar chunk via cosine similarity       │
+│  4. HYBRID RETRIEVAL                                         │
+│     └─> Vector + BM25 keyword search                        │
 │                                                              │
-│  5. GENERATION                                               │
-│     └─> Gemini generates answer from retrieved context      │
+│  5. RETRIEVAL EVALUATION                                     │
+│     └─> relevant / partially relevant / irrelevant          │
+│                                                              │
+│  6. CORRECTIVE RETRY                                         │
+│     └─> Query rewrite + rerank + re-eval                    │
+│                                                              │
+│  7. GENERATION                                               │
+│     └─> Strict grounded prompt                              │
+│                                                              │
+│  8. ANSWER VALIDATION                                        │
+│     └─> Detect unsupported claims                           │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -60,6 +71,26 @@ RAG is a technique that enhances Large Language Model (LLM) responses by:
 ---
 
 ## 🔧 Component Breakdown
+
+### Corrective RAG Modules
+
+- **crag/config.py**: Centralized CRAG thresholds and feature flags
+- **crag/hybrid_retrieval.py**: Vector + BM25 retrieval with score fusion
+- **crag/retrieval_evaluator.py**: Retrieval quality classification
+- **crag/query_rewriter.py**: Automatic query rewriting for weak queries
+- **crag/reranker.py**: Lexical overlap reranking
+- **crag/context_filter.py**: Deduplication and confidence filtering
+- **crag/validator.py**: Answer grounding validation
+- **crag/controller.py**: Corrective RAG orchestration
+- **crag/metrics.py**: Retrieval/grounding evaluation utilities
+
+### Retrieval Evaluation and Correction
+
+1. **Hybrid Retrieval**: Vector similarity + BM25 keyword search returns top-k candidates.
+2. **Evaluation**: Uses raw cosine similarity thresholds to classify relevance.
+3. **Correction**: If relevance is weak, the query is rewritten and retrieval is retried.
+4. **Reranking**: Combines semantic scores with lexical overlap for better ordering.
+5. **Filtering**: Deduplicates and drops low-confidence chunks before generation.
 
 ### 1. **data_ingestion.py** - Data Loading Module
 **Purpose**: Read and load text data from files
@@ -362,6 +393,28 @@ User Query: "When did badminton join the Olympics?"
 └─────────────────────────────────────────┘
               ↓
          Answer to User
+```
+
+### Corrective RAG Flow (CRAG)
+
+```
+User Query
+   ↓
+Hybrid Retrieval (Vector + BM25)
+   ↓
+Retrieval Evaluation (relevant / partial / irrelevant)
+   ↓
+[Relevant]
+   → Context Filtering
+   → Generation (strict prompt)
+   → Answer Validation
+   → Final Response
+
+[Irrelevant or Partial]
+   → Query Rewrite
+   → Hybrid Retrieval Retry
+   → Rerank + Re-evaluate
+   → Generation + Validation
 ```
 
 ---

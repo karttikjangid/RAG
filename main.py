@@ -7,12 +7,12 @@ from youtube_ingestion import get_youtube_transcript
 from pdf_ingestion import get_pdf_text
 from chunking import get_chunks
 from embedding import vector_embedding
-from retrieval import search_best_chunks
-from generation import NO_ANSWER_RESPONSE, generate_answer
+from generation import NO_ANSWER_RESPONSE
+from crag.config import CRAGConfig
+from crag.controller import CorrectiveRAGController
+from crag.hybrid_retrieval import HybridRetriever
+from crag.logging_utils import get_logger
 
-DEFAULT_CHUNK_SIZE = 600
-DEFAULT_CHUNK_OVERLAP = 120
-MIN_SIMILARITY = 0.2  # Minimum cosine similarity (0.0-1.0) to trust retrieved context
 
 def start_app():
     print("\n" + "=" * 70)
@@ -125,7 +125,8 @@ def start_app():
     
     # 2. Chunk the Data
     print("\n--- ✂️  CHUNKING DATA ---")
-    text_chunks = get_chunks(raw_text, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP)
+    config = CRAGConfig.from_env()
+    text_chunks = get_chunks(raw_text, config.chunk_size, config.chunk_overlap)
     print(f"   ✅ Created {len(text_chunks)} chunks")
     
     # 3. Embed (Create Vector Embeddings)
@@ -133,6 +134,13 @@ def start_app():
     print("   Loading embedding model...")
     db_vectors, model = vector_embedding(text_chunks)
     print(f"   ✅ Generated {len(db_vectors)} vectors")
+
+    retriever = HybridRetriever(text_chunks, db_vectors, model, config)
+    controller = CorrectiveRAGController(
+        config,
+        retriever,
+        logger=get_logger("crag", config.log_level),
+    )
     
     print("\n" + "=" * 70)
     print("✅ SYSTEM READY - Ask your questions!")
@@ -152,26 +160,19 @@ def start_app():
             
         start_ts = time.time()
         
-        # A. RETRIEVAL - Find relevant context
-        print(f"🔍 Searching knowledge base...")
-        results = search_best_chunks(query, model, db_vectors, text_chunks, k=3)
-        best_context = results[0]['text']
-        score = results[0]['score']
-        
-        print(f"   📄 Best match (confidence: {score:.4f})")
-        print(f"   \"{best_context[:150]}...\"")
-        
-        # B. GENERATION - Generate answer with LLM
-        print("🤖 Generating answer...")
-        if score < MIN_SIMILARITY:
+        print("🔍 Evaluating retrieval quality...")
+        try:
+            response = controller.run(query)
+            evaluation = response.evaluation
+            print(
+                "   📄 Retrieval quality: "
+                f"{evaluation.decision} (max score {evaluation.max_score:.4f})"
+            )
+            print("🤖 Generating answer...")
+            print(f"\n💬 Answer:\n{response.answer}")
+        except Exception as e:
+            print(f"\n⚠️  CRAG pipeline failed: {e}")
             print(f"\n💬 Answer:\n{NO_ANSWER_RESPONSE}")
-        else:
-            try:
-                answer = generate_answer(query, best_context)
-                print(f"\n💬 Answer:\n{answer}")
-            except Exception as e:
-                print(f"\n⚠️  LLM not available. Here's the retrieved context:")
-                print(f"{best_context[:500]}...")
         
         end_ts = time.time()
         print(f"\n⏱️  Time taken: {end_ts - start_ts:.2f}s")

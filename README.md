@@ -8,18 +8,20 @@
 
 ## 🌟 Overview
 
-**LecturMate** is a complete RAG (Retrieval-Augmented Generation) system that lets you chat with PDFs, TXT files, CSVs, and video transcripts using **Gemini** for grounded answers. Built with a modern, calm green UI inspired by contemporary design principles.
+**LecturMate** is a Corrective RAG (CRAG) system that lets you chat with PDFs, TXT files, CSVs, and video transcripts using **Gemini** for grounded answers. It evaluates retrieval quality, retries with query rewrites and hybrid retrieval, and validates answers to prevent hallucinations. Built with a modern, calm green UI inspired by contemporary design principles.
 
 ### Key Capabilities
 
 - 📄 **Multi-Source Ingestion**: PDFs, TXT files, CSVs, and YouTube videos
 - 🧠 **Smart Chunking**: Sliding window approach with configurable overlap
-- 🔍 **Semantic Search**: Find relevant context using vector embeddings
+- 🔍 **Hybrid Retrieval**: Vector similarity + BM25 keyword search
+- ✅ **Retrieval Evaluation**: Classifies results as relevant/partially relevant/irrelevant
+- ♻️ **Corrective Retries**: Query rewriting and reranking on weak retrievals
 - 🗂️ **Vector Store**: In-memory embedding matrix for fast similarity search
 - 💬 **AI-Powered Answers**: Gemini API (gemini-1.5-flash) with grounded responses
 - 🎨 **Beautiful UI**: Modern Streamlit interface with light green theme
 - ⚡ **Performance Optimized**: Comprehensive caching for lightning-fast responses
-- 🔒 **Grounded RAG**: Answers are restricted to retrieved context with explicit no-hallucination fallback
+- 🔒 **Grounded CRAG**: Answers are restricted to high-confidence context with validation
 
 
 ## 📸 Screenshots (Placeholders)
@@ -34,24 +36,28 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    LecturMate RAG Pipeline                  │
+│                 LecturMate Corrective RAG                   │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
-│  1. INGESTION       →  2. CHUNKING    →  3. EMBEDDING     │
-│  ┌──────────────┐     ┌───────────┐     ┌──────────────┐  │
-│  │ PDF/TXT/CSV │      │ Sliding   │     │ Sentence     │  │
-│  │ YouTube URLs│  →   │ Window    │  →  │ Transformers │  │
-│  │            │       │ (600/120) │     │ (384-dim)    │  │
-│  └──────────────┘     └───────────┘     └──────────────┘  │
-│         ↓                    ↓                   ↓         │
-│  4. RETRIEVAL       ←  5. GENERATION   ←  User Query      │
-│  ┌──────────────┐     ┌───────────────────────────┐       │
-│  │ Cosine       │     │ Gemini (gemini-1.5-flash)│       │
-│  │ Similarity   │  ←  │ + Retrieved Context       │       │
-│  │ Top-k=3      │     │ = Grounded Answer         │       │
-│  └──────────────┘     └───────────────────────────┘       │
+│  1. INGESTION → 2. CHUNKING → 3. EMBEDDING                   │
+│                                                             │
+│  4. HYBRID RETRIEVAL → 5. RETRIEVAL EVALUATION               │
+│                                                             │
+│  [Good] → Context Filter → Generation → Answer Validation    │
+│  [Bad]  → Query Rewrite → Hybrid Retry → Rerank → Re-eval    │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
+
+---
+
+## ✅ Corrective RAG Flow
+
+1. **Initial Retrieval** (vector + BM25)
+2. **Retrieval Evaluation** (relevant / partially relevant / irrelevant)
+3. **Corrective Retry** (query rewrite + hybrid retry + rerank) when needed
+4. **Context Filtering** (dedupe + confidence threshold)
+5. **Generation** with strict grounding rules
+6. **Answer Validation** and safe fallback if unsupported
 ```
 
 ---
@@ -60,10 +66,12 @@
 
 LecturMate strictly grounds answers in retrieved context:
 
+- **Retrieval evaluation** gates low-quality retrievals before generation.
 - **Prompt guardrails** instruct Gemini to use only provided chunks.
-- **Similarity threshold** blocks low-confidence retrievals.
+- **Context filtering** removes low-confidence or duplicate passages.
+- **Answer validation** checks for unsupported claims and triggers regeneration.
 - **Fallback message** when context is insufficient:
-  *"The uploaded document does not contain enough information to answer this question."*
+   *"The uploaded document does not contain enough information to answer this question."*
 
 ---
 
@@ -209,6 +217,29 @@ Enter PDF file path: research_paper.pdf
 
 ---
 
+## 🧪 Testing
+
+Run automated tests with pytest:
+
+```bash
+pytest
+```
+
+Run the manual CRAG demo:
+
+```bash
+python tests/test_real_rag.py
+```
+
+## 📏 Evaluation Metrics
+
+Utilities in `crag/metrics.py` provide lightweight evaluation helpers:
+
+- Retrieval precision
+- Answer grounding rate
+- Response relevance
+- Hallucination rate
+
 ## 🚀 Deployment
 
 LecturMate is deployable on Render or Railway:
@@ -264,6 +295,28 @@ k = 3  # Number of top chunks to retrieve
 # Higher k = more context but slower generation
 ```
 
+### Corrective RAG Settings
+
+Set any of these environment variables to tune CRAG behavior:
+
+```bash
+CRAG_TOP_K=3
+CRAG_MAX_RETRIES=2
+CRAG_RELEVANT_THRESHOLD=0.35
+CRAG_PARTIAL_THRESHOLD=0.2
+CRAG_MIN_CONTEXT_SCORE=0.15
+CRAG_VECTOR_WEIGHT=0.7
+CRAG_BM25_WEIGHT=0.3
+CRAG_RERANK_LEXICAL_WEIGHT=0.2
+CRAG_DEDUPE_JACCARD=0.9
+CRAG_MIN_GROUNDED_SENTENCE_RATIO=0.6
+CRAG_MIN_SENTENCE_OVERLAP=0.2
+CRAG_ENABLE_QUERY_REWRITE=true
+CRAG_ENABLE_HYBRID=true
+CRAG_ENABLE_VALIDATION=true
+CRAG_LOG_LEVEL=INFO
+```
+
 ---
 
 ## 🎨 Features Breakdown
@@ -308,8 +361,9 @@ from csv_ingestion import get_csv_text
 from youtube_ingestion import get_youtube_transcript
 from chunking import get_chunks
 from embedding import vector_embedding
-from retrieval import search_best_chunks
-from generation import generate_answer
+from crag.config import CRAGConfig
+from crag.controller import CorrectiveRAGController
+from crag.hybrid_retrieval import HybridRetriever
 
 # 1. Ingest data
 pdf_text = get_pdf_text("research.pdf")
@@ -318,19 +372,20 @@ yt_text = get_youtube_transcript("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 combined_text = pdf_text + "\n\n" + csv_text + "\n\n" + yt_text
 
 # 2. Chunk the text
-chunks = get_chunks(combined_text, chunk_size=600, overlap=120)
+config = CRAGConfig.from_env()
+chunks = get_chunks(combined_text, chunk_size=config.chunk_size, overlap=config.chunk_overlap)
 
 # 3. Create embeddings
 vectors, model = vector_embedding(chunks)
 
-# 4. Query the system
-query = "What is the main topic discussed?"
-results = search_best_chunks(query, model, db_vectors=vectors, chunks=chunks, k=3)
+# 4. Build Corrective RAG controller
+retriever = HybridRetriever(chunks, vectors, model, config)
+controller = CorrectiveRAGController(config, retriever)
 
-# 5. Generate answer
-context = results[0]['text']  # Top result
-answer = generate_answer(query, context)
-print(answer)
+# 5. Query the system
+query = "What is the main topic discussed?"
+response = controller.run(query)
+print(response.answer)
 ```
 
 ### Individual Module Usage
@@ -373,6 +428,17 @@ results = search_best_chunks(
 # Generation
 from generation import generate_answer
 answer = generate_answer(query="question", context="retrieved context")  # Returns: str
+
+# Corrective RAG Controller
+from crag.config import CRAGConfig
+from crag.controller import CorrectiveRAGController
+from crag.hybrid_retrieval import HybridRetriever
+
+config = CRAGConfig.from_env()
+retriever = HybridRetriever(chunks, vectors, model, config)
+controller = CorrectiveRAGController(config, retriever)
+response = controller.run("your question")
+print(response.answer)
 ```
 
 ---

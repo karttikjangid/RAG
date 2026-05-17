@@ -5,6 +5,8 @@ def search_best_chunks(query, model, db_vectors, chunks, k=3):
     """
     Returns the TOP K chunks, not just the single best one.
     """
+    if not chunks:
+        return []
     # 1. Encode the query
     query_vector = model.encode(query)
     
@@ -12,6 +14,9 @@ def search_best_chunks(query, model, db_vectors, chunks, k=3):
     scores = util.cos_sim(query_vector, db_vectors)
     
     # 3. Get Top K Results
+    k = min(k, len(chunks))
+    if k == 0:
+        return []
     # This gives us the top 3 scores and their index positions
     top_results = torch.topk(scores, k=k)
     
@@ -29,7 +34,8 @@ def search_best_chunks(query, model, db_vectors, chunks, k=3):
         # Add to our list
         results.append({
             "text": chunks[idx],
-            "score": score
+            "score": score,
+            "index": idx
         })
         
     return results

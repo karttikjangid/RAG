@@ -10,11 +10,14 @@ import streamlit as st
 from sentence_transformers import SentenceTransformer
 
 from csv_ingestion import get_csv_text
-from generation import NO_ANSWER_RESPONSE, generate_answer
+from generation import NO_ANSWER_RESPONSE
 from chunking import get_chunks
 from pdf_ingestion import get_pdf_text
-from retrieval import search_best_chunks
 from youtube_ingestion import get_youtube_transcript
+from crag.config import CRAGConfig
+from crag.controller import CorrectiveRAGController
+from crag.hybrid_retrieval import HybridRetriever
+from crag.logging_utils import get_logger
 
 # Cache the embedding model (loads only once)
 @st.cache_resource(show_spinner="Loading embedding model...")
@@ -59,7 +62,7 @@ def cached_youtube_transcript(url):
 
 # Cache chunking operation
 @st.cache_data(show_spinner="Chunking text...")
-def cached_chunking(text, chunk_size=500, overlap=100):
+def cached_chunking(text, chunk_size=600, overlap=120):
     """Cache text chunking"""
     return get_chunks(text, chunk_size, overlap)
 
@@ -76,10 +79,6 @@ def _write_temp_file(file_bytes, suffix):
         temp_file.write(file_bytes)
         return temp_file.name
 
-
-DEFAULT_CHUNK_SIZE = 600
-DEFAULT_CHUNK_OVERLAP = 120
-MIN_SIMILARITY = 0.0
 
 # Page Configuration
 st.set_page_config(
@@ -443,6 +442,12 @@ if 'messages' not in st.session_state:
     st.session_state.messages = []
 if 'processing' not in st.session_state:
     st.session_state.processing = False
+if 'crag_config' not in st.session_state:
+    st.session_state.crag_config = CRAGConfig.from_env()
+if 'retriever' not in st.session_state:
+    st.session_state.retriever = None
+if 'controller' not in st.session_state:
+    st.session_state.controller = None
 
 
 def rebuild_embeddings():
@@ -451,21 +456,37 @@ def rebuild_embeddings():
         st.session_state.vector_db = None
         st.session_state.model = None
         st.session_state.chunks = None
+        st.session_state.retriever = None
+        st.session_state.controller = None
         return
 
     st.session_state.full_text = "\n\n".join(
         [source["content"] for source in st.session_state.source_details]
     )
 
+    config = CRAGConfig.from_env()
+    st.session_state.crag_config = config
+
     model = load_embedding_model()
     st.session_state.chunks = cached_chunking(
         st.session_state.full_text,
-        DEFAULT_CHUNK_SIZE,
-        DEFAULT_CHUNK_OVERLAP,
+        config.chunk_size,
+        config.chunk_overlap,
     )
     vectors = cached_embedding(model, st.session_state.chunks)
     st.session_state.vector_db = vectors
     st.session_state.model = model
+    st.session_state.retriever = HybridRetriever(
+        st.session_state.chunks,
+        st.session_state.vector_db,
+        st.session_state.model,
+        config,
+    )
+    st.session_state.controller = CorrectiveRAGController(
+        config,
+        st.session_state.retriever,
+        logger=get_logger("crag", config.log_level),
+    )
 
 
 def format_file_size(size_bytes_or_label: Union[int, str]) -> str:
@@ -704,37 +725,24 @@ if prompt := st.chat_input("Ask a question about your sources..."):
         with st.chat_message("assistant", avatar="🤖"):
             with st.spinner("Thinking..."):
                 try:
-                    # Retrieve relevant chunks
-                    top_chunks = search_best_chunks(
-                        query=prompt,
-                        model=st.session_state.model,
-                        db_vectors=st.session_state.vector_db,
-                        chunks=st.session_state.chunks,
-                        k=3
-                    )
-                    
-                    context_chunks = [chunk["text"] for chunk in top_chunks if chunk["text"].strip()]
-                    context = "\n\n".join(context_chunks)
-                    best_score = top_chunks[0]["score"] if top_chunks else 0
-
-                    if not context or best_score < MIN_SIMILARITY:
+                    controller = st.session_state.controller
+                    if controller is None:
                         answer = NO_ANSWER_RESPONSE
                     else:
-                        answer = generate_answer(prompt, context)
-                    
-                    # Display answer
+                        response = controller.run(prompt)
+                        answer = response.answer
+
                     st.markdown(answer)
-                    
-                    # Save message
+
                     st.session_state.messages.append({
                         "role": "assistant",
-                        "content": answer
+                        "content": answer,
                     })
-                    
+
                 except Exception as e:
                     error_msg = f"Error: {str(e)}"
                     st.error(error_msg)
                     st.session_state.messages.append({
                         "role": "assistant",
-                        "content": error_msg
+                        "content": error_msg,
                     })

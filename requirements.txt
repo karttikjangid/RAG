@@ -12,3 +12,5 @@ langchain
 torch
 transformers
 pypdf
+rank-bm25
+pytest
